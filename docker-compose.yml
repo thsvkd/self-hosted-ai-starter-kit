@@ -9,7 +9,7 @@ networks:
 
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
-  networks: ['demo']
+  networks: ["demo"]
   environment:
     - DB_TYPE=postgresdb
     - DB_POSTGRESDB_HOST=postgres
@@ -27,7 +27,7 @@ x-n8n: &service-n8n
 x-ollama: &service-ollama
   image: ollama/ollama:latest
   container_name: ollama
-  networks: ['demo']
+  networks: ["demo"]
   restart: unless-stopped
   ports:
     - 11434:11434
@@ -36,7 +36,7 @@ x-ollama: &service-ollama
 
 x-init-ollama: &init-ollama
   image: ollama/ollama:latest
-  networks: ['demo']
+  networks: ["demo"]
   container_name: ollama-pull-llama
   volumes:
     - ollama_storage:/root/.ollama
@@ -51,7 +51,7 @@ services:
   postgres:
     image: postgres:16-alpine
     hostname: postgres
-    networks: ['demo']
+    networks: ["demo"]
     restart: unless-stopped
     environment:
       - POSTGRES_USER
@@ -60,7 +60,11 @@ services:
     volumes:
       - postgres_storage:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -100,12 +104,34 @@ services:
     image: qdrant/qdrant
     hostname: qdrant
     container_name: qdrant
-    networks: ['demo']
+    networks: ["demo"]
     restart: unless-stopped
     ports:
       - 6333:6333
     volumes:
       - qdrant_storage:/qdrant/storage
+
+  n8n-python:
+    <<: *service-n8n
+    image: naskio/n8n-python:latest-debian
+    container_name: n8n-python
+    restart: unless-stopped
+    networks: ["demo"]
+    # Do NOT publish the same host port as the main `n8n` service to avoid conflicts.
+    # If you need to expose this container separately, change the host port (e.g. "5679:5678").
+    # ports:
+    #  - "5679:5678"
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+      - ./shared:/data/shared # by default workdir == /data
+      - ./python_scripts:/data/py_scripts
+      - ./requirements.txt:/data/requirements.txt
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Optional: run whatever Python entrypoint you need. Default here installs requirements if present
+    # and then keeps container running (replace with your actual worker command).
+    command: /bin/sh -c "if [ -f /data/requirements.txt ]; then pip install -r /data/requirements.txt || true; fi; tail -f /dev/null"
 
   ollama-cpu:
     profiles: ["cpu"]
@@ -147,4 +173,4 @@ services:
     <<: *init-ollama
     image: ollama/ollama:rocm
     depends_on:
-     - ollama-gpu-amd
+      - ollama-gpu-amd
