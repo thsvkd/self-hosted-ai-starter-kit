@@ -113,7 +113,10 @@ services:
 
   n8n-python:
     <<: *service-n8n
-    image: naskio/n8n-python:latest-debian
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n-python
+    image: selfhosted/n8n-python:local
     container_name: n8n-python
     restart: unless-stopped
     networks: ["demo"]
@@ -121,17 +124,18 @@ services:
     # If you need to expose this container separately, change the host port (e.g. "5679:5678").
     # ports:
     #  - "5679:5678"
+    ports:
+      - "8000:8000"
     volumes:
       - ./n8n_data:/home/node/.n8n
       - ./shared:/data/shared # by default workdir == /data
       - ./python_scripts:/data/py_scripts
-      - ./requirements.txt:/data/requirements.txt
     depends_on:
       postgres:
         condition: service_healthy
-    # Optional: run whatever Python entrypoint you need. Default here installs requirements if present
-    # and then keeps container running (replace with your actual worker command).
-    command: /bin/sh -c "if [ -f /data/requirements.txt ]; then pip install -r /data/requirements.txt || true; fi; tail -f /dev/null"
+    # On container start: run uvicorn for the API server. The python scripts are mounted at
+    # /data/py_scripts, so use uvicorn's --app-dir to point to that directory.
+    command: /bin/sh -c 'uvicorn --app-dir /data/py_scripts api_server:app --host 0.0.0.0 --port 8000'
 
   ollama-cpu:
     profiles: ["cpu"]

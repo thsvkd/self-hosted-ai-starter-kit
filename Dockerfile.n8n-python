@@ -1,0 +1,17 @@
+FROM naskio/n8n-python:latest-debian
+
+# Build-time install of Python dependencies so runtime doesn't need to install them.
+WORKDIR /app
+
+# Copy only requirements first to leverage Docker cache
+COPY requirements.txt /app/requirements.txt
+
+# Install into system site-packages (run as root during build)
+RUN python -m pip install --upgrade pip \
+  && pip install --no-cache-dir -r /app/requirements.txt
+
+# Expose the server port used by uvicorn
+EXPOSE 8000
+
+# Note: runtime volumes (e.g. /data/py_scripts) are still mounted by docker-compose.
+# The container's default command is provided by docker-compose (uvicorn).
