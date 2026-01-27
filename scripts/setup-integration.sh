@@ -198,8 +198,17 @@ start_with_tunnel() {
             print_info "No permanent tunnel token found. Starting quick tunnel..."
             print_warning "This tunnel URL will change each time you restart."
             docker compose --profile "$PROFILE" up -d
-            ./scripts/expose-with-cloudflare.sh &
-            print_success "Quick tunnel started! Check the output for your temporary URL."
+            
+            # Check if expose script exists before running
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            EXPOSE_SCRIPT="$SCRIPT_DIR/expose-with-cloudflare.sh"
+            if [ -f "$EXPOSE_SCRIPT" ] && [ -x "$EXPOSE_SCRIPT" ]; then
+                "$EXPOSE_SCRIPT" &
+                print_success "Quick tunnel started! Check the output for your temporary URL."
+            else
+                print_warning "Quick tunnel script not found or not executable."
+                print_info "You can manually run: docker run --rm -it --network self-hosted-ai-starter-kit_demo cloudflare/cloudflared:latest tunnel --url http://n8n:5678"
+            fi
         fi
     else
         docker compose --profile "$PROFILE" up -d
