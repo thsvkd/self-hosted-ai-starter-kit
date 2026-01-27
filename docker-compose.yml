@@ -20,6 +20,19 @@ x-n8n: &service-n8n
     - N8N_ENCRYPTION_KEY
     - N8N_USER_MANAGEMENT_JWT_SECRET
     - OLLAMA_HOST=${OLLAMA_HOST:-ollama:11434}
+    # GitLab Integration
+    - GITLAB_URL=${GITLAB_URL:-}
+    - GITLAB_ACCESS_TOKEN=${GITLAB_ACCESS_TOKEN:-}
+    - GITLAB_PROJECT_ID=${GITLAB_PROJECT_ID:-}
+    # Slack Integration
+    - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN:-}
+    - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET:-}
+    - SLACK_CHANNEL=${SLACK_CHANNEL:-}
+    # Notion Integration
+    - NOTION_API_KEY=${NOTION_API_KEY:-}
+    - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
+    # n8n Webhook URL (for Cloudflare Tunnel)
+    - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
   env_file:
     - path: .env
       required: true
@@ -178,3 +191,18 @@ services:
     image: ollama/ollama:rocm
     depends_on:
       - ollama-gpu-amd
+
+  # Cloudflare Tunnel for exposing n8n to external services (Slack, Notion webhooks)
+  # Enable by setting CLOUDFLARE_TUNNEL_TOKEN in .env
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    hostname: cloudflared
+    networks: ["demo"]
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - n8n

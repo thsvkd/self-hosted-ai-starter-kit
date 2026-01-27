@@ -201,6 +201,46 @@ your local n8n instance.
 - [Financial Documents Assistant using Qdrant and](https://n8n.io/workflows/2335-build-a-financial-documents-assistant-using-qdrant-and-mistralai/) [Mistral.ai](http://mistral.ai/)
 - [Recipe Recommendations with Qdrant and Mistral](https://n8n.io/workflows/2333-recipe-recommendations-with-qdrant-and-mistral/)
 
+## 🔗 GitLab-Slack-Notion Integration
+
+This starter kit includes pre-built n8n workflows for integrating an internal GitLab server with cloud services like Slack and Notion.
+
+### Features
+
+- **Issue Sync**: Create GitLab issues from Slack commands or Notion pages
+- **Auto-resolve**: Automatically close issues when commits reference issue numbers
+- **Comment Sync**: Sync comments between Slack/Notion and GitLab
+- **Notifications**: Get notified on Slack when issues are created or resolved
+
+### Quick Start
+
+1. Configure environment variables in `.env` (see `.env.example`)
+2. Set up Cloudflare Tunnel for external webhooks: `./scripts/expose-with-cloudflare.sh`
+3. Access n8n at http://localhost:5678 and configure credentials
+4. Activate the integration workflows
+
+### Usage Scenarios
+
+```
+Designer posts issue on Slack → GitLab issue created → Developer fixes with commit
+→ Issue auto-closed → Slack/Notion notified → Designer confirms → Comment synced
+```
+
+### Documentation
+
+- [Cloudflare Tunnel Setup Guide](docs/CLOUDFLARE_TUNNEL_SETUP.md)
+- [Integration Setup Guide](docs/INTEGRATION_SETUP.md)
+
+### Running with Cloudflare Tunnel
+
+```bash
+# Start all services with Cloudflare Tunnel
+docker compose --profile gpu-nvidia --profile tunnel up -d
+
+# Or for CPU-only setups
+docker compose --profile cpu --profile tunnel up -d
+```
+
 ## Tips & tricks
 
 ### Accessing local files

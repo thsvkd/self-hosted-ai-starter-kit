@@ -1,0 +1,236 @@
+{
+  "createdAt": "2024-12-01T00:00:00.000Z",
+  "updatedAt": "2024-12-01T00:00:00.000Z",
+  "id": "gitlab-slack-notion-01",
+  "name": "GitLab-Slack-Notion Issue Sync",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-to-gitlab",
+        "options": {}
+      },
+      "id": "slack-webhook-trigger",
+      "name": "Slack Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 200],
+      "webhookId": "slack-to-gitlab-webhook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notion-to-gitlab",
+        "options": {}
+      },
+      "id": "notion-webhook-trigger",
+      "name": "Notion Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 400],
+      "webhookId": "notion-to-gitlab-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.source }}",
+              "rightValue": "slack",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "source-router",
+      "name": "Route by Source",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.GITLAB_URL }}/api/v4/projects/{{ $env.GITLAB_PROJECT_ID }}/issues",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "PRIVATE-TOKEN",
+              "value": "={{ $credentials.gitlabApi.accessToken }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.description }}\\n\\n---\\n**Created from**: {{ $json.source }}\\n**Original Author**: {{ $json.author }}"
+            },
+            {
+              "name": "labels",
+              "value": "={{ $json.labels || 'from-' + $json.source }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-gitlab-issue",
+      "name": "Create GitLab Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "gitlab-api-cred",
+          "name": "GitLab API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_CHANNEL }}",
+        "text": "✅ GitLab 이슈가 생성되었습니다!\\n\\n*이슈 번호*: #{{ $json.iid }}\\n*제목*: {{ $json.title }}\\n*링크*: {{ $json.web_url }}",
+        "otherOptions": {}
+      },
+      "id": "slack-notify-created",
+      "name": "Notify Slack - Issue Created",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [950, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-api-cred",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "page",
+        "operation": "update",
+        "pageId": "={{ $json.notion_page_id }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "GitLab Issue",
+              "type": "url",
+              "urlValue": "={{ $json.web_url }}"
+            },
+            {
+              "key": "Status",
+              "type": "select",
+              "selectValue": "In GitLab"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notion-update-page",
+      "name": "Update Notion Page",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [950, 400],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-api-cred",
+          "name": "Notion API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Slack Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Route by Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Route by Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Source": {
+      "main": [
+        [
+          {
+            "node": "Create GitLab Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create GitLab Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create GitLab Issue": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack - Issue Created",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Notion Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "gitlab-slack-notion-sync"
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "triggerCount": 0,
+  "tags": [
+    {
+      "name": "integration",
+      "id": "integration-tag"
+    }
+  ]
+}

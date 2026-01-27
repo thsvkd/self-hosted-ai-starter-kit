@@ -1,0 +1,255 @@
+{
+  "createdAt": "2024-12-01T00:00:00.000Z",
+  "updatedAt": "2024-12-01T00:00:00.000Z",
+  "id": "gitlab-commit-resolver-01",
+  "name": "GitLab Commit Issue Resolver",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gitlab-webhook",
+        "options": {}
+      },
+      "id": "gitlab-webhook-trigger",
+      "name": "GitLab Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "gitlab-webhook-trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-push-event",
+              "leftValue": "={{ $json.object_kind }}",
+              "rightValue": "push",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-push-event",
+      "name": "Check Push Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract issue numbers from commit messages\n// Supports formats: #123, closes #123, fixes #123, resolves #123\n\nconst commits = $input.first().json.commits || [];\nconst issuePattern = /(?:closes?|fixes?|resolves?)?\\s*#(\\d+)/gi;\n\nconst issueNumbers = new Set();\n\nfor (const commit of commits) {\n  const message = commit.message || '';\n  let match;\n  while ((match = issuePattern.exec(message)) !== null) {\n    issueNumbers.add(parseInt(match[1], 10));\n  }\n}\n\nconst items = Array.from(issueNumbers).map(issueId => ({\n  json: {\n    issueId,\n    projectId: $input.first().json.project_id,\n    commitUrl: $input.first().json.commits?.[0]?.url || '',\n    commitMessage: $input.first().json.commits?.[0]?.message || '',\n    author: $input.first().json.user_name || 'Unknown'\n  }\n}));\n\nreturn items.length > 0 ? items : [];"
+      },
+      "id": "extract-issue-numbers",
+      "name": "Extract Issue Numbers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $env.GITLAB_URL }}/api/v4/projects/{{ $json.projectId }}/issues/{{ $json.issueId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "PRIVATE-TOKEN",
+              "value": "={{ $env.GITLAB_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "state_event",
+              "value": "close"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "close-gitlab-issue",
+      "name": "Close GitLab Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.GITLAB_URL }}/api/v4/projects/{{ $json.projectId }}/issues/{{ $json.issueId }}/notes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "PRIVATE-TOKEN",
+              "value": "={{ $env.GITLAB_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "body",
+              "value": "🎉 이 이슈는 커밋에 의해 자동으로 해결되었습니다.\\n\\n**커밋 작성자**: {{ $json.author }}\\n**커밋 메시지**: {{ $json.commitMessage }}\\n**커밋 링크**: {{ $json.commitUrl }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "add-resolution-comment",
+      "name": "Add Resolution Comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_CHANNEL }}",
+        "text": "✅ 이슈 #{{ $json.issueId }} 해결됨!\\n\\n**작성자**: {{ $json.author }}\\n**커밋 메시지**: {{ $json.commitMessage }}\\n\\n해당 이슈가 GitLab에서 자동으로 닫혔습니다. 디자이너 분들의 최종 컨펌을 기다립니다.",
+        "otherOptions": {}
+      },
+      "id": "notify-slack-resolved",
+      "name": "Notify Slack - Issue Resolved",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1200, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-api-cred",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": "={{ $json.notion_page_id }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status",
+              "type": "select",
+              "selectValue": "Resolved - Pending Confirmation"
+            },
+            {
+              "key": "Resolution Note",
+              "type": "richText",
+              "textContent": "커밋에 의해 해결됨: {{ $json.commitMessage }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-notion-resolved",
+      "name": "Update Notion - Resolved",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1200, 400],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-api-cred",
+          "name": "Notion API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "GitLab Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Push Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Push Event": {
+      "main": [
+        [
+          {
+            "node": "Extract Issue Numbers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Issue Numbers": {
+      "main": [
+        [
+          {
+            "node": "Close GitLab Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Close GitLab Issue": {
+      "main": [
+        [
+          {
+            "node": "Add Resolution Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Resolution Comment": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack - Issue Resolved",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Notion - Resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "gitlab-commit-resolver"
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "triggerCount": 0,
+  "tags": [
+    {
+      "name": "integration",
+      "id": "integration-tag"
+    }
+  ]
+}
